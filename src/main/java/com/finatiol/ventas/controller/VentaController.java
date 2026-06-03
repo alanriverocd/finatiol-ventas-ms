@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.*;
 import com.finatiol.common.constants.ventas.SuccessCodes;
 import com.finatiol.common.constants.ventas.SuccessMessages;
 import com.finatiol.common.response.SuccessResponse;
+import com.finatiol.ventas.dto.PagoVentaRequestDTO;
+import com.finatiol.ventas.dto.PagoVentaResponseDTO;
+import com.finatiol.ventas.dto.SaldoVentaDTO;
 import com.finatiol.ventas.dto.VentaRequestDTO;
 import com.finatiol.ventas.entity.VentaEntity;
 import com.finatiol.ventas.service.VentaService;
@@ -96,5 +99,36 @@ public class VentaController {
                 SuccessMessages.VENTAS_ORDENADAS_OBTENIDAS,
                 200,
                 ventaService.obtenerVentasOrdenadas()));
+    }
+
+    // ---- pagos ----
+
+    @PostMapping("/{id}/pagos")
+    public ResponseEntity<SuccessResponse<PagoVentaResponseDTO>> registrarPago(
+            @PathVariable Long id,
+            @RequestBody PagoVentaRequestDTO request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new SuccessResponse<>("PAGO-001", "Pago registrado", 201,
+                        ventaService.registrarPago(id, request)));
+    }
+
+    @GetMapping("/{id}/pagos")
+    public ResponseEntity<SuccessResponse<List<PagoVentaResponseDTO>>> obtenerPagos(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(new SuccessResponse<>("PAGO-002", "Pagos obtenidos", 200,
+                ventaService.obtenerPagos(id)));
+    }
+
+    @GetMapping("/{id}/saldo")
+    public ResponseEntity<SuccessResponse<SaldoVentaDTO>> obtenerSaldo(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(new SuccessResponse<>("PAGO-003", "Saldo obtenido", 200,
+                ventaService.obtenerSaldo(id)));
+    }
+
+    @GetMapping("/con-pendientes")
+    public ResponseEntity<SuccessResponse<List<SaldoVentaDTO>>> ventasConPendiente() {
+        return ResponseEntity.ok(new SuccessResponse<>("PAGO-004", "Ventas con saldo pendiente", 200,
+                ventaService.obtenerVentasConPendiente()));
     }
 }
