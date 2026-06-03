@@ -17,6 +17,11 @@ import org.slf4j.LoggerFactory;
 import com.finatiol.ventas.client.FinanzasClient;
 import com.finatiol.ventas.client.ProductoClient;
 import com.finatiol.ventas.config.RabbitMQConfig;
+import com.finatiol.ventas.dto.PagoVentaRequestDTO;
+import com.finatiol.ventas.dto.PagoVentaResponseDTO;
+import com.finatiol.ventas.dto.SaldoVentaDTO;
+import com.finatiol.ventas.entity.PagoVentaEntity;
+import com.finatiol.ventas.repository.PagoVentaRepository;
 import com.finatiol.ventas.dto.ActualizarStockDTO;
 import com.finatiol.ventas.dto.RegistrarMovimientoDTO;
 import com.finatiol.ventas.dto.DetalleVentaRequestDTO;
@@ -37,6 +42,7 @@ public class VentaServiceImpl implements VentaService {
     private final ProductoClient productoClient;
     private final FinanzasClient finanzasClient;
     private final RabbitTemplate rabbitTemplate;
+    private final PagoVentaRepository pagoVentaRepository;
 
     private final Counter ventasCreadasCounter;
     private final Counter ventasMontoCounter;
@@ -46,11 +52,13 @@ public class VentaServiceImpl implements VentaService {
                             ProductoClient productoClient,
                             FinanzasClient finanzasClient,
                             RabbitTemplate rabbitTemplate,
+                            PagoVentaRepository pagoVentaRepository,
                             MeterRegistry meterRegistry) {
         this.ventaRepository = ventaRepository;
         this.productoClient = productoClient;
         this.finanzasClient = finanzasClient;
         this.rabbitTemplate = rabbitTemplate;
+        this.pagoVentaRepository = pagoVentaRepository;
         this.ventasCreadasCounter = Counter.builder("ventas_creadas_total")
                 .description("Total de ventas creadas")
                 .register(meterRegistry);
@@ -123,14 +131,6 @@ public class VentaServiceImpl implements VentaService {
 
             VentaEntity ventaGuardada = ventaRepository.save(venta);
 
-            // Registrar ingreso en finanzas-ms (fallback activo si no está disponible)
-            finanzasClient.registrarMovimiento(new RegistrarMovimientoDTO(
-                    "INGRESO",
-                    "Venta #" + ventaGuardada.getId() + " - " + ventaGuardada.getUsuario(),
-                    BigDecimal.valueOf(ventaGuardada.getTotal()),
-                    "VENTA-" + ventaGuardada.getId()
-            ));
-
             // Publicar evento a RabbitMQ → notificaciones-ms consume de forma asíncrona
             try {
                 VentaRealizadaEvent event = new VentaRealizadaEvent(
@@ -186,5 +186,85 @@ public class VentaServiceImpl implements VentaService {
     @Override
     public List<VentaEntity> obtenerVentasOrdenadas() {
         return ventaRepository.findAll(Sort.by(Sort.Direction.DESC, "fecha"));
+    }
+
+    // ------------------------------------------------------------------ pagos
+
+    @Override
+    public PagoVentaResponseDTO registrarPago(Long ventaId, PagoVentaRequestDTO request) {
+        VentaEntity venta = ventaRepository.findById(ventaId).orElseThrow();
+        PagoVentaEntity pago = new PagoVentaEntity();
+        pago.setVenta(venta);
+        pago.setMonto(request.getMonto());
+        pago.setConcepto(request.getConcepto());
+        pago.setMetodoPago(request.getMetodoPago());
+        pago.setRegistradoPor(request.getRegistradoPor());
+        PagoVentaEntity saved = pagoVentaRepository.save(pago);
+
+        // Registrar automáticamente el ingreso en finanzas-ms
+        try {
+            String conceptoIngreso = (request.getConcepto() != null && !request.getConcepto().isBlank())
+                    ? "Cobro - " + request.getConcepto() + " | Venta #" + ventaId + " | " + venta.getUsuario()
+                    : "Cobro de venta #" + ventaId + " | " + venta.getUsuario();
+            finanzasClient.registrarMovimiento(new RegistrarMovimientoDTO(
+                    "INGRESO",
+                    conceptoIngreso,
+                    BigDecimal.valueOf(request.getMonto()),
+                    "PAGO-VENTA-" + saved.getId()
+            ));
+        } catch (Exception e) {
+        }
+
+        return toDTO(saved);
+    }
+
+    @Override
+    public List<PagoVentaResponseDTO> obtenerPagos(Long ventaId) {
+        return pagoVentaRepository.findByVentaIdOrderByFechaDesc(ventaId)
+                .stream().map(this::toDTO).toList();
+    }
+
+    @Override
+    public SaldoVentaDTO obtenerSaldo(Long ventaId) {
+        VentaEntity venta = ventaRepository.findById(ventaId).orElseThrow();
+        return buildSaldo(venta);
+    }
+
+    @Override
+    public List<SaldoVentaDTO> obtenerVentasConPendiente() {
+        return ventaRepository.findAll(Sort.by(Sort.Direction.DESC, "fecha"))
+                .stream()
+                .map(this::buildSaldo)
+                .filter(s -> s.getSaldoPendiente() > 0.001)
+                .toList();
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    private PagoVentaResponseDTO toDTO(PagoVentaEntity p) {
+        PagoVentaResponseDTO dto = new PagoVentaResponseDTO();
+        dto.setId(p.getId());
+        dto.setVentaId(p.getVenta().getId());
+        dto.setMonto(p.getMonto());
+        dto.setFecha(p.getFecha());
+        dto.setConcepto(p.getConcepto());
+        dto.setMetodoPago(p.getMetodoPago());
+        dto.setRegistradoPor(p.getRegistradoPor());
+        return dto;
+    }
+
+    private SaldoVentaDTO buildSaldo(VentaEntity venta) {
+        double pagado = pagoVentaRepository.sumMontoByVentaId(venta.getId());
+        double pendiente = Math.max(0, venta.getTotal() - pagado);
+        String estado = pendiente < 0.001 ? "COMPLETO"
+                : pagado < 0.001 ? "PENDIENTE" : "PARCIAL";
+        SaldoVentaDTO dto = new SaldoVentaDTO();
+        dto.setVentaId(venta.getId());
+        dto.setUsuario(venta.getUsuario());
+        dto.setTotalVenta(venta.getTotal());
+        dto.setTotalPagado(pagado);
+        dto.setSaldoPendiente(pendiente);
+        dto.setEstadoPago(estado);
+        return dto;
     }
 }
