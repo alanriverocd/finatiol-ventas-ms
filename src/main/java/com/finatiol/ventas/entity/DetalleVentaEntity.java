@@ -1,6 +1,7 @@
 package com.finatiol.ventas.entity;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
 @Table(name = "detalle_venta")
@@ -22,6 +23,7 @@ public class DetalleVentaEntity {
 
     @ManyToOne
     @JoinColumn(name = "venta_id")
+    @JsonIgnore
     private VentaEntity venta;
 
     public Long getId() {

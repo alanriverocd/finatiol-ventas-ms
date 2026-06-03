@@ -25,6 +25,18 @@ public class GlobalExceptionHandler {
                                 404));
     }
 
+    @ExceptionHandler(ServicioNoDisponibleException.class)
+    public ResponseEntity<ErrorResponse> manejarServicioNoDisponible(
+            ServicioNoDisponibleException ex) {
+
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse(
+                        "SERVICIO_NO_DISPONIBLE",
+                        ex.getMessage(),
+                        503));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse>
     manejarGeneral(

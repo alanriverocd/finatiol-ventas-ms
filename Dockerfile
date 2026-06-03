@@ -9,6 +9,8 @@ RUN mvn -f finatiol-ventas-ms/pom.xml package -DskipTests -q
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-EXPOSE 8085
 COPY --from=build /app/finatiol-ventas-ms/target/*.jar app.jar
+RUN groupadd -r appgroup && useradd -r -g appgroup -u 1001 appuser
+USER appuser
+EXPOSE 8085
 ENTRYPOINT ["java", "-jar", "app.jar"]

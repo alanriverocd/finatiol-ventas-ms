@@ -1,12 +1,18 @@
 package com.finatiol.ventas.entity;
 
+import com.finatiol.common.tenant.TenantContext;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Filter;
+import org.hibernate.annotations.FilterDef;
+import org.hibernate.annotations.ParamDef;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
 @Table(name = "ventas")
+@FilterDef(name = "tenantFilter", parameters = @ParamDef(name = "tenantId", type = String.class))
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId")
 public class VentaEntity {
 
     @Id
@@ -21,6 +27,16 @@ public class VentaEntity {
 
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL)
     private List<DetalleVentaEntity> detalles;
+
+    @Column(name = "tenant_id")
+    private String tenantId;
+
+    @PrePersist
+    protected void onPrePersist() {
+        if (this.tenantId == null) {
+            this.tenantId = TenantContext.getCurrentTenant();
+        }
+}
 
     public Long getId() {
         return id;
@@ -60,5 +76,13 @@ public class VentaEntity {
 
     public void setDetalles(List<DetalleVentaEntity> detalles) {
         this.detalles = detalles;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
     }
 }

@@ -84,6 +84,11 @@ public class VentaController {
                 ventaService.obtenerTotalVentas()));
     }
 
+    @GetMapping("/resumen")
+    public ResponseEntity<Double> resumenTotalVentas() {
+        return ResponseEntity.ok(ventaService.obtenerTotalVentas());
+    }
+
     @GetMapping("/ordenadas")
     public ResponseEntity<SuccessResponse<List<VentaEntity>>> obtenerVentasOrdenadas() {
         return ResponseEntity.ok(new SuccessResponse<>(
