@@ -1,0 +1,7 @@
+app = "REPLACE_WITH_APP_NAME"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Set runtime environment variables via Fly secrets instead of committing them here
